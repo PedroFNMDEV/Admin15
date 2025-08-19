@@ -395,24 +395,23 @@ class WowzaConfigService {
     console.log(`📄 Criando arquivo: ${filePath}`);
     console.log(`📝 Conteúdo (primeiras 100 chars): ${content.substring(0, 100)}...`);
     
-    // Usar printf para evitar problemas com heredoc e caracteres especiais
-    const escapedContent = content
-      .replace(/\\/g, '\\\\')  // Escapar barras invertidas
-      .replace(/"/g, '\\"')    // Escapar aspas duplas
-      .replace(/\$/g, '\\$')   // Escapar cifrões
-      .replace(/`/g, '\\`');   // Escapar backticks
-    
-    // Usar cat com heredoc para arquivos maiores como Application.xml
-    if (content.length > 1000) {
-      const tempFile = `/tmp/wowza_${Date.now()}.tmp`;
-      const command = `cat > "${tempFile}" << 'WOWZA_EOF'
-${content}
-WOWZA_EOF
-mv "${tempFile}" "${filePath}"`;
+    try {
+      // Usar base64 para evitar problemas com caracteres especiais
+      const base64Content = Buffer.from(content, 'utf8').toString('base64');
       
+      // Criar arquivo usando base64 decode
+      const command = `echo "${base64Content}" | base64 -d > "${filePath}"`;
       await this.executeSSHCommand(command, serverIp, serverData);
-    } else {
-      const command = `printf '%s' "${escapedContent}" > "${filePath}"`;
+    } catch (error) {
+      console.error(`❌ Erro ao criar arquivo via base64, tentando método alternativo:`, error);
+      
+      // Método alternativo: usar printf com escape adequado
+      const escapedContent = content
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "'\"'\"'")  // Escapar aspas simples
+        .replace(/\$/g, '\\$');
+      
+      const command = `printf '%s' '${escapedContent}' > "${filePath}"`;
       await this.executeSSHCommand(command, serverIp, serverData);
     }
     
@@ -463,7 +462,9 @@ mv "${tempFile}" "${filePath}"`;
    */
   async updateXmlValue(filePath, propertyName, newValue, serverIp, serverData) {
     console.log(`🔄 Atualizando propriedade: ${propertyName} = ${newValue}`);
-    const command = `sed -i 's|<Name>${propertyName}</Name>.*<Value>.*</Value>|<Name>${propertyName}</Name>\\n\\t\\t\\t\\t<Value>${newValue}</Value>|g' "${filePath}"`;
+    
+    // Usar sed com delimitador diferente para evitar problemas
+    const command = `sed -i 's#<Name>${propertyName}</Name>[[:space:]]*<Value>[^<]*</Value>#<Name>${propertyName}</Name>\\n        <Value>${newValue}</Value>#g' "${filePath}"`;
     await this.executeSSHCommand(command, serverIp, serverData);
   }
 
@@ -649,293 +650,301 @@ mv "${tempFile}" "${filePath}"`;
    * Gera o conteúdo do Application.xml
    */
   generateApplicationXml(nome, serverIp, bitrate, espectadores) {
-    return `<?xml version="1.0" encoding="UTF-8"?>
+    // Usar template string sem interpolação de variáveis shell problemáticas
+    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <Root version="1">
-	<Application>
-		<Name>${nome}</Name>
-		<AppType>Live</AppType>
-		<Description>Aplicação de streaming criada automaticamente para ${nome}</Description>
-		<Connections>
-			<AutoAccept>true</AutoAccept>
-			<AllowDomains></AllowDomains>
-		</Connections>
-		<Streams>
-			<StreamType>live</StreamType>
-			<StorageDir>/home/streaming/${nome}</StorageDir>
-			<KeyDir>\${com.wowza.wms.context.VHostConfigHome}/keys</KeyDir>
-			<LiveStreamPacketizers>cupertinostreamingpacketizer, mpegdashstreamingpacketizer, sanjosestreamingpacketizer, smoothstreamingpacketizer</LiveStreamPacketizers>
-			<Properties>
-			</Properties>
-		</Streams>
-		<Transcoder>
-			<LiveStreamTranscoder></LiveStreamTranscoder>
-			<Templates>\${SourceStreamName}.xml,transrate.xml</Templates>
-			<ProfileDir>\${com.wowza.wms.context.VHostConfigHome}/transcoder/profiles</ProfileDir>
-			<TemplateDir>\${com.wowza.wms.context.VHostConfigHome}/transcoder/templates</TemplateDir>
-			<Properties>
-			</Properties>
-		</Transcoder>
-		<DVR>
-			<Recorders></Recorders>
-			<Store></Store>
-			<WindowDuration>0</WindowDuration>
-			<StorageDir>\${com.wowza.wms.context.VHostConfigHome}/dvr</StorageDir>
-			<ArchiveStrategy>append</ArchiveStrategy>
-			<Properties>
-			</Properties>
-		</DVR>
-		<TimedText>
-			<VODTimedTextProviders></VODTimedTextProviders>
-			<Properties>
-			</Properties>
-		</TimedText>
-		<HTTPStreamers>cupertinostreaming, smoothstreaming, sanjosestreaming, mpegdashstreaming</HTTPStreamers>
-		<MediaCache>
-			<MediaCacheSourceList></MediaCacheSourceList>
-		</MediaCache>
-		<SharedObjects>
-			<StorageDir>\${com.wowza.wms.context.VHostConfigHome}/applications/\${com.wowza.wms.context.Application}/sharedobjects/\${com.wowza.wms.context.ApplicationInstance}</StorageDir>
-		</SharedObjects>
-		<Client>
-			<IdleFrequency>-1</IdleFrequency>
-			<Access>
-				<StreamReadAccess>*</StreamReadAccess>
-				<StreamWriteAccess>*</StreamWriteAccess>
-				<StreamAudioSampleAccess></StreamAudioSampleAccess>
-				<StreamVideoSampleAccess></StreamVideoSampleAccess>
-				<SharedObjectReadAccess>*</SharedObjectReadAccess>
-				<SharedObjectWriteAccess>*</SharedObjectWriteAccess>
-			</Access>
-		</Client>
-		<RTP>
-			<Authentication>
-				<PublishMethod>digest</PublishMethod>
-				<PlayMethod>none</PlayMethod>
-			</Authentication>
-			<AVSyncMethod>senderreport</AVSyncMethod>
-			<MaxRTCPWaitTime>12000</MaxRTCPWaitTime>
-			<IdleFrequency>75</IdleFrequency>
-			<RTSPSessionTimeout>90000</RTSPSessionTimeout>
-			<RTSPMaximumPendingWriteBytes>0</RTSPMaximumPendingWriteBytes>
-			<RTSPBindIpAddress></RTSPBindIpAddress>
-			<RTSPConnectionIpAddress>0.0.0.0</RTSPConnectionIpAddress>
-			<RTSPOriginIpAddress>127.0.0.1</RTSPOriginIpAddress>
-			<IncomingDatagramPortRanges>*</IncomingDatagramPortRanges>
-			<Properties>
-			</Properties>
-		</RTP>
-		<WebRTC>
-			<EnablePublish>true</EnablePublish>
-			<EnablePlay>true</EnablePlay>
-			<EnableQuery>true</EnableQuery>
-			<IceCandidateIpAddresses>${serverIp},tcp,1935</IceCandidateIpAddresses>
-			<UDPBindAddress></UDPBindAddress>
-			<PreferredCodecsAudio>opus,vorbis,pcmu,pcma</PreferredCodecsAudio>
-			<PreferredCodecsVideo>vp8,h264</PreferredCodecsVideo>
-			<DebugLog>false</DebugLog>
-			<Properties>
-			</Properties>
-		</WebRTC>
-		<MediaCaster>
-			<RTP>
-				<RTSP>
-					<RTPTransportMode>interleave</RTPTransportMode>
-				</RTSP>
-			</RTP>
-			<StreamValidator>
-				<Enable>true</Enable>
-				<ResetNameGroups>true</ResetNameGroups>
-				<StreamStartTimeout>20000</StreamStartTimeout>
-				<StreamTimeout>12000</StreamTimeout>
-				<VideoStartTimeout>0</VideoStartTimeout>
-				<VideoTimeout>0</VideoTimeout>
-				<AudioStartTimeout>0</AudioStartTimeout>
-				<AudioTimeout>0</AudioTimeout>
-				<VideoTCToleranceEnable>false</VideoTCToleranceEnable>
-				<VideoTCPosTolerance>3000</VideoTCPosTolerance>
-				<VideoTCNegTolerance>-500</VideoTCNegTolerance>
-				<AudioTCToleranceEnable>false</AudioTCToleranceEnable>
-				<AudioTCPosTolerance>3000</AudioTCPosTolerance>
-				<AudioTCNegTolerance>-500</AudioTCNegTolerance>
-				<DataTCToleranceEnable>false</DataTCToleranceEnable>
-				<DataTCPosTolerance>3000</DataTCPosTolerance>
-				<DataTCNegTolerance>-500</DataTCNegTolerance>
-				<AVSyncToleranceEnable>false</AVSyncToleranceEnable>
-				<AVSyncTolerance>1500</AVSyncTolerance>
-				<DebugLog>false</DebugLog>
-			</StreamValidator>
-			<Properties>
-			</Properties>
-		</MediaCaster>
-		<MediaReader>
-			<Properties>
-			</Properties>
-		</MediaReader>
-		<MediaWriter>
-			<Properties>
-			</Properties>
-		</MediaWriter>
-		<LiveStreamPacketizer>
-			<Properties>
-			</Properties>
-		</LiveStreamPacketizer>
-		<HTTPStreamer>
-			<Properties>
-                <Property>
-                <Name>cupertinoPlaylistProgramId</Name>
-                <Value>1</Value>
-                <Type>Integer</Type>
-                </Property>
-			</Properties>
-		</HTTPStreamer>
-		<HTTPProvider>
-			<BaseClass>com.wowza.wms.plugin.HTTPStreamControl</BaseClass>
-			<RequestFilters>streamcontrol*</RequestFilters>
-			<AuthenticationMethod>none</AuthenticationMethod>
-		</HTTPProvider>
-		<Manager>
-			<Properties>
-			</Properties>
-		</Manager>
-		<Repeater>
-			<OriginURL></OriginURL>
-			<QueryString><![CDATA[]]></QueryString>
-		</Repeater>
-		<StreamRecorder>
-			<Properties>
-			</Properties>
-		</StreamRecorder>
-		<Modules>
-			<Module>
-				<Name>base</Name>
-				<Description>Base</Description>
-				<Class>com.wowza.wms.module.ModuleCore</Class>
-			</Module>
-			<Module>
-				<Name>logging</Name>
-				<Description>Client Logging</Description>
-				<Class>com.wowza.wms.module.ModuleClientLogging</Class>
-			</Module>
-			<Module>
-				<Name>flvplayback</Name>
-				<Description>FLVPlayback</Description>
-				<Class>com.wowza.wms.module.ModuleFLVPlayback</Class>
-			</Module>
-			<Module>
-				<Name>ModuleCoreSecurity</Name>
-				<Description>Core Security Module for Applications</Description>
-				<Class>com.wowza.wms.security.ModuleCoreSecurity</Class>
-			</Module>
-			<Module>
-				<Name>streamPublisher</Name>
-				<Description>Playlists</Description>
-				<Class>com.wowza.wms.plugin.streampublisher.ModuleStreamPublisher</Class>
-			</Module>
-           <Module>
-				<Name>ModuleLoopUntilLive</Name>
-				<Description>ModuleLoopUntilLive</Description>
-				<Class>com.wowza.wms.plugin.streampublisher.ModuleLoopUntilLive</Class>
-			</Module>
-			<Module>
-                <Name>ModuleLimitPublishedStreamBandwidth</Name>
-                <Description>Monitors limit of published stream bandwidth.</Description>
-                <Class>com.wowza.wms.plugin.ModuleLimitPublishedStreamBandwidth</Class>
-            </Module>
-			<Module>
-                    <Name>ModulePushPublish</Name>
-                    <Description>ModulePushPublish</Description>
-                    <Class>com.wowza.wms.pushpublish.module.ModulePushPublish</Class>
-            </Module>
-		</Modules>
-		<Properties>
-			<Property>
-				<Name>limitPublishedStreamBandwidthMaxBitrate</Name>
-				<Value>${bitrate}</Value>
-				<Type>Integer</Type>
-			</Property>
-			<Property>
-				<Name>limitPublishedStreamBandwidthDebugLog</Name>
-				<Value>true</Value>
-				<Type>Boolean</Type>
-			</Property>
-			<Property>
-				<Name>MaxBitrate</Name>
-				<Value>${bitrate}</Value>
-				<Type>Integer</Type>
-			</Property>
-			<Property>
-				<Name>StreamMonitorLogging</Name>
-				<Value>true</Value>
-				<Type>Boolean</Type>
-			</Property>
-			<Property>
-				<Name>limitStreamViewersMaxViewers</Name>
-				<Value>${espectadores}</Value>
-				<Type>Integer</Type>
-			</Property>
-			<Property>
-				<Name>securityPlayMaximumConnections</Name>
-				<Value>${espectadores}</Value>
-				<Type>Integer</Type>
-			</Property>
-			<Property>
-				<Name>securityPublishRequirePassword</Name>
-				<Value>true</Value>
-				<Type>Boolean</Type>
-			</Property>
-			<Property>
-				<Name>streamPublisherSmilFile</Name>
-				<Value>playlists_agendamentos.smil</Value>
-				<Type>String</Type>
-			</Property>
-			<Property>
-				<Name>streamPublisherPassMetaData</Name>
-				<Value>true</Value>
-				<Type>Boolean</Type>
-			</Property>
-			<Property>
-				<Name>streamPublisherSwitchLog</Name>
-				<Value>true</Value>
-				<Type>Boolean</Type>
-			</Property>
-			<Property>
-				<Name>securityPublishBlockDuplicateStreamNames</Name>
-				<Value>false</Value>
-				<Type>Boolean</Type>
-			</Property>
-			<Property>
-				<Name>securityPublishPasswordFile</Name>
-				<Value>\${com.wowza.wms.context.VHostConfigHome}/conf/\${com.wowza.wms.context.Application}/publish.password</Value>
-				<Type>String</Type>
-			</Property>
-			<Property>
-				<Name>loopUntilLiveSourceStreams</Name>
-				<Value>live</Value>
-				<Type>String</Type>
-			</Property>
-			<Property>
-				<Name>loopUntilLiveOutputStreams</Name>
-				<Value>${nome}</Value>
-				<Type>String</Type>
-			</Property>
-			<Property>
-				<Name>loopUntilLiveReloadEntirePlaylist</Name>
-				<Value>true</Value>
-				<Type>Boolean</Type>
-			</Property>
-			<Property>
-				<Name>loopUntilLiveHandleMediaCasters</Name>
-				<Value>false</Value>
-				<Type>Boolean</Type>
-			</Property>
-			<Property>
-                <Name>pushPublishMapPath</Name>
-                <Value>\${com.wowza.wms.context.VHostConfigHome}/conf/\${com.wowza.wms.context.Application}/PushPublishMap.txt</Value>
-                <Type>String</Type>
-            </Property>
-		</Properties>
-	</Application>
+  <Application>
+    <Name>${nome}</Name>
+    <AppType>Live</AppType>
+    <Description>Aplicação de streaming criada automaticamente para ${nome}</Description>
+    <Connections>
+      <AutoAccept>true</AutoAccept>
+      <AllowDomains></AllowDomains>
+    </Connections>
+    <Streams>
+      <StreamType>live</StreamType>
+      <StorageDir>/home/streaming/${nome}</StorageDir>
+      <KeyDir>WOWZA_VHOST_CONFIG_HOME/keys</KeyDir>
+      <LiveStreamPacketizers>cupertinostreamingpacketizer, mpegdashstreamingpacketizer, sanjosestreamingpacketizer, smoothstreamingpacketizer</LiveStreamPacketizers>
+      <Properties>
+      </Properties>
+    </Streams>
+    <Transcoder>
+      <LiveStreamTranscoder></LiveStreamTranscoder>
+      <Templates>WOWZA_SOURCE_STREAM_NAME.xml,transrate.xml</Templates>
+      <ProfileDir>WOWZA_VHOST_CONFIG_HOME/transcoder/profiles</ProfileDir>
+      <TemplateDir>WOWZA_VHOST_CONFIG_HOME/transcoder/templates</TemplateDir>
+      <Properties>
+      </Properties>
+    </Transcoder>
+    <DVR>
+      <Recorders></Recorders>
+      <Store></Store>
+      <WindowDuration>0</WindowDuration>
+      <StorageDir>WOWZA_VHOST_CONFIG_HOME/dvr</StorageDir>
+      <ArchiveStrategy>append</ArchiveStrategy>
+      <Properties>
+      </Properties>
+    </DVR>
+    <TimedText>
+      <VODTimedTextProviders></VODTimedTextProviders>
+      <Properties>
+      </Properties>
+    </TimedText>
+    <HTTPStreamers>cupertinostreaming, smoothstreaming, sanjosestreaming, mpegdashstreaming</HTTPStreamers>
+    <MediaCache>
+      <MediaCacheSourceList></MediaCacheSourceList>
+    </MediaCache>
+    <SharedObjects>
+      <StorageDir>WOWZA_VHOST_CONFIG_HOME/applications/WOWZA_APPLICATION/sharedobjects/WOWZA_APPLICATION_INSTANCE</StorageDir>
+    </SharedObjects>
+    <Client>
+      <IdleFrequency>-1</IdleFrequency>
+      <Access>
+        <StreamReadAccess>*</StreamReadAccess>
+        <StreamWriteAccess>*</StreamWriteAccess>
+        <StreamAudioSampleAccess></StreamAudioSampleAccess>
+        <StreamVideoSampleAccess></StreamVideoSampleAccess>
+        <SharedObjectReadAccess>*</SharedObjectReadAccess>
+        <SharedObjectWriteAccess>*</SharedObjectWriteAccess>
+      </Access>
+    </Client>
+    <RTP>
+      <Authentication>
+        <PublishMethod>digest</PublishMethod>
+        <PlayMethod>none</PlayMethod>
+      </Authentication>
+      <AVSyncMethod>senderreport</AVSyncMethod>
+      <MaxRTCPWaitTime>12000</MaxRTCPWaitTime>
+      <IdleFrequency>75</IdleFrequency>
+      <RTSPSessionTimeout>90000</RTSPSessionTimeout>
+      <RTSPMaximumPendingWriteBytes>0</RTSPMaximumPendingWriteBytes>
+      <RTSPBindIpAddress></RTSPBindIpAddress>
+      <RTSPConnectionIpAddress>0.0.0.0</RTSPConnectionIpAddress>
+      <RTSPOriginIpAddress>127.0.0.1</RTSPOriginIpAddress>
+      <IncomingDatagramPortRanges>*</IncomingDatagramPortRanges>
+      <Properties>
+      </Properties>
+    </RTP>
+    <WebRTC>
+      <EnablePublish>true</EnablePublish>
+      <EnablePlay>true</EnablePlay>
+      <EnableQuery>true</EnableQuery>
+      <IceCandidateIpAddresses>${serverIp},tcp,1935</IceCandidateIpAddresses>
+      <UDPBindAddress></UDPBindAddress>
+      <PreferredCodecsAudio>opus,vorbis,pcmu,pcma</PreferredCodecsAudio>
+      <PreferredCodecsVideo>vp8,h264</PreferredCodecsVideo>
+      <DebugLog>false</DebugLog>
+      <Properties>
+      </Properties>
+    </WebRTC>
+    <MediaCaster>
+      <RTP>
+        <RTSP>
+          <RTPTransportMode>interleave</RTPTransportMode>
+        </RTSP>
+      </RTP>
+      <StreamValidator>
+        <Enable>true</Enable>
+        <ResetNameGroups>true</ResetNameGroups>
+        <StreamStartTimeout>20000</StreamStartTimeout>
+        <StreamTimeout>12000</StreamTimeout>
+        <VideoStartTimeout>0</VideoStartTimeout>
+        <VideoTimeout>0</VideoTimeout>
+        <AudioStartTimeout>0</AudioStartTimeout>
+        <AudioTimeout>0</AudioTimeout>
+        <VideoTCToleranceEnable>false</VideoTCToleranceEnable>
+        <VideoTCPosTolerance>3000</VideoTCPosTolerance>
+        <VideoTCNegTolerance>-500</VideoTCNegTolerance>
+        <AudioTCToleranceEnable>false</AudioTCToleranceEnable>
+        <AudioTCPosTolerance>3000</AudioTCPosTolerance>
+        <AudioTCNegTolerance>-500</AudioTCNegTolerance>
+        <DataTCToleranceEnable>false</DataTCToleranceEnable>
+        <DataTCPosTolerance>3000</DataTCPosTolerance>
+        <DataTCNegTolerance>-500</DataTCNegTolerance>
+        <AVSyncToleranceEnable>false</AVSyncToleranceEnable>
+        <AVSyncTolerance>1500</AVSyncTolerance>
+        <DebugLog>false</DebugLog>
+      </StreamValidator>
+      <Properties>
+      </Properties>
+    </MediaCaster>
+    <MediaReader>
+      <Properties>
+      </Properties>
+    </MediaReader>
+    <MediaWriter>
+      <Properties>
+      </Properties>
+    </MediaWriter>
+    <LiveStreamPacketizer>
+      <Properties>
+      </Properties>
+    </LiveStreamPacketizer>
+    <HTTPStreamer>
+      <Properties>
+        <Property>
+          <Name>cupertinoPlaylistProgramId</Name>
+          <Value>1</Value>
+          <Type>Integer</Type>
+        </Property>
+      </Properties>
+    </HTTPStreamer>
+    <HTTPProvider>
+      <BaseClass>com.wowza.wms.plugin.HTTPStreamControl</BaseClass>
+      <RequestFilters>streamcontrol*</RequestFilters>
+      <AuthenticationMethod>none</AuthenticationMethod>
+    </HTTPProvider>
+    <Manager>
+      <Properties>
+      </Properties>
+    </Manager>
+    <Repeater>
+      <OriginURL></OriginURL>
+      <QueryString><![CDATA[]]></QueryString>
+    </Repeater>
+    <StreamRecorder>
+      <Properties>
+      </Properties>
+    </StreamRecorder>
+    <Modules>
+      <Module>
+        <Name>base</Name>
+        <Description>Base</Description>
+        <Class>com.wowza.wms.module.ModuleCore</Class>
+      </Module>
+      <Module>
+        <Name>logging</Name>
+        <Description>Client Logging</Description>
+        <Class>com.wowza.wms.module.ModuleClientLogging</Class>
+      </Module>
+      <Module>
+        <Name>flvplayback</Name>
+        <Description>FLVPlayback</Description>
+        <Class>com.wowza.wms.module.ModuleFLVPlayback</Class>
+      </Module>
+      <Module>
+        <Name>ModuleCoreSecurity</Name>
+        <Description>Core Security Module for Applications</Description>
+        <Class>com.wowza.wms.security.ModuleCoreSecurity</Class>
+      </Module>
+      <Module>
+        <Name>streamPublisher</Name>
+        <Description>Playlists</Description>
+        <Class>com.wowza.wms.plugin.streampublisher.ModuleStreamPublisher</Class>
+      </Module>
+      <Module>
+        <Name>ModuleLoopUntilLive</Name>
+        <Description>ModuleLoopUntilLive</Description>
+        <Class>com.wowza.wms.plugin.streampublisher.ModuleLoopUntilLive</Class>
+      </Module>
+      <Module>
+        <Name>ModuleLimitPublishedStreamBandwidth</Name>
+        <Description>Monitors limit of published stream bandwidth.</Description>
+        <Class>com.wowza.wms.plugin.ModuleLimitPublishedStreamBandwidth</Class>
+      </Module>
+      <Module>
+        <Name>ModulePushPublish</Name>
+        <Description>ModulePushPublish</Description>
+        <Class>com.wowza.wms.pushpublish.module.ModulePushPublish</Class>
+      </Module>
+    </Modules>
+    <Properties>
+      <Property>
+        <Name>limitPublishedStreamBandwidthMaxBitrate</Name>
+        <Value>${bitrate}</Value>
+        <Type>Integer</Type>
+      </Property>
+      <Property>
+        <Name>limitPublishedStreamBandwidthDebugLog</Name>
+        <Value>true</Value>
+        <Type>Boolean</Type>
+      </Property>
+      <Property>
+        <Name>MaxBitrate</Name>
+        <Value>${bitrate}</Value>
+        <Type>Integer</Type>
+      </Property>
+      <Property>
+        <Name>StreamMonitorLogging</Name>
+        <Value>true</Value>
+        <Type>Boolean</Type>
+      </Property>
+      <Property>
+        <Name>limitStreamViewersMaxViewers</Name>
+        <Value>${espectadores}</Value>
+        <Type>Integer</Type>
+      </Property>
+      <Property>
+        <Name>securityPlayMaximumConnections</Name>
+        <Value>${espectadores}</Value>
+        <Type>Integer</Type>
+      </Property>
+      <Property>
+        <Name>securityPublishRequirePassword</Name>
+        <Value>true</Value>
+        <Type>Boolean</Type>
+      </Property>
+      <Property>
+        <Name>streamPublisherSmilFile</Name>
+        <Value>playlists_agendamentos.smil</Value>
+        <Type>String</Type>
+      </Property>
+      <Property>
+        <Name>streamPublisherPassMetaData</Name>
+        <Value>true</Value>
+        <Type>Boolean</Type>
+      </Property>
+      <Property>
+        <Name>streamPublisherSwitchLog</Name>
+        <Value>true</Value>
+        <Type>Boolean</Type>
+      </Property>
+      <Property>
+        <Name>securityPublishBlockDuplicateStreamNames</Name>
+        <Value>false</Value>
+        <Type>Boolean</Type>
+      </Property>
+      <Property>
+        <Name>securityPublishPasswordFile</Name>
+        <Value>WOWZA_VHOST_CONFIG_HOME/conf/WOWZA_APPLICATION/publish.password</Value>
+        <Type>String</Type>
+      </Property>
+      <Property>
+        <Name>loopUntilLiveSourceStreams</Name>
+        <Value>live</Value>
+        <Type>String</Type>
+      </Property>
+      <Property>
+        <Name>loopUntilLiveOutputStreams</Name>
+        <Value>${nome}</Value>
+        <Type>String</Type>
+      </Property>
+      <Property>
+        <Name>loopUntilLiveReloadEntirePlaylist</Name>
+        <Value>true</Value>
+        <Type>Boolean</Type>
+      </Property>
+      <Property>
+        <Name>loopUntilLiveHandleMediaCasters</Name>
+        <Value>false</Value>
+        <Type>Boolean</Type>
+      </Property>
+      <Property>
+        <Name>pushPublishMapPath</Name>
+        <Value>WOWZA_VHOST_CONFIG_HOME/conf/WOWZA_APPLICATION/PushPublishMap.txt</Value>
+        <Type>String</Type>
+      </Property>
+    </Properties>
+  </Application>
 </Root>`;
+
+    // Substituir placeholders por variáveis Wowza reais após criar o arquivo
+    return xmlContent
+      .replace(/WOWZA_VHOST_CONFIG_HOME/g, '${com.wowza.wms.context.VHostConfigHome}')
+      .replace(/WOWZA_SOURCE_STREAM_NAME/g, '${SourceStreamName}')
+      .replace(/WOWZA_APPLICATION/g, '${com.wowza.wms.context.Application}')
+      .replace(/WOWZA_APPLICATION_INSTANCE/g, '${com.wowza.wms.context.ApplicationInstance}');
   }
 
   /**
