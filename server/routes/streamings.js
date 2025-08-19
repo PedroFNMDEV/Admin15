@@ -429,7 +429,6 @@ router.delete('/:id', authenticateToken, requireLevel(['super_admin', 'admin']),
       );
 
       if (serverData[0]) {
-        const wowzaResult = await wowzaConfigService.removeWowzaConfig(streaming[0].login, serverData[0].ip);
         const wowzaResult = await wowzaConfigService.removeWowzaConfig(streaming[0].usuario, serverData[0].ip);
         
         if (wowzaResult.simulated) {

@@ -93,8 +93,8 @@ class LogService {
         // Criar contexto baseado nos dados
         if (dados.nome) {
           contexto = `"${dados.nome}"`;
-        } else if (dados.login) {
-          contexto = `"${dados.login}"`;
+        } else if (dados.usuario) {
+          contexto = `"${dados.usuario}"`;
         } else if (dados.email) {
           contexto = `"${dados.email}"`;
         }
