@@ -28,7 +28,7 @@ export const StreamingForm: React.FC = () => {
     codigo_cliente: undefined,
     plano_id: undefined,
     codigo_servidor: undefined,
-    login: '',
+    usuario: '',
     senha: '',
     identificacao: '',
     email: '',
@@ -76,7 +76,7 @@ export const StreamingForm: React.FC = () => {
         codigo_cliente: streaming.codigo_cliente || undefined,
         plano_id: streaming.plano_id,
         codigo_servidor: streaming.codigo_servidor,
-        login: streaming.login,
+        usuario: streaming.usuario,
         senha: '', // Não carregamos a senha por segurança
         identificacao: streaming.identificacao,
         email: streaming.email,
@@ -105,7 +105,7 @@ export const StreamingForm: React.FC = () => {
 
     try {
       // Validar dados obrigatórios
-      if (!formData.login || !formData.email || !formData.identificacao || !formData.codigo_servidor) {
+      if (!formData.usuario || !formData.email || !formData.identificacao || !formData.codigo_servidor) {
         throw new Error('Preencha todos os campos obrigatórios');
       }
 
@@ -237,9 +237,9 @@ export const StreamingForm: React.FC = () => {
               ]}
             />
             <Input
-              label="Login *"
-              name="login"
-              value={formData.login}
+              label="Usuário *"
+              name="usuario"
+              value={formData.usuario}
               onChange={handleChange}
               required
             />

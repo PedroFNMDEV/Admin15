@@ -309,7 +309,7 @@ export const Streamings: React.FC = () => {
           <div className="relative">
             <Search className="absolute left-3 top-3 text-gray-400" size={16} />
             <Input
-              placeholder="Buscar por login, email ou identificação..."
+              placeholder="Buscar por usuário, email ou identificação..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -346,6 +346,7 @@ export const Streamings: React.FC = () => {
           <Table>
             <TableHeader>
               <TableHeaderCell>Login</TableHeaderCell>
+              <TableHeaderCell>Usuário</TableHeaderCell>
               <TableHeaderCell>Servidor</TableHeaderCell>
               <TableHeaderCell>Configuração</TableHeaderCell>
               <TableHeaderCell>FTP</TableHeaderCell>
@@ -362,7 +363,7 @@ export const Streamings: React.FC = () => {
                         <Play className="text-blue-600" size={16} />
                       </div>
                       <div>
-                        <div className="font-medium text-gray-900">{streaming.login}</div>
+                        <div className="font-medium text-gray-900">{streaming.usuario}</div>
                         <div className="text-sm text-gray-500">{streaming.email}</div>
                         <div className="text-xs text-gray-400">{streaming.identificacao}</div>
                       </div>
@@ -690,7 +691,7 @@ export const Streamings: React.FC = () => {
       >
         <div className="space-y-4">
           <p className="text-gray-600">
-            Tem certeza que deseja excluir a streaming <strong>{selectedStreaming?.login}</strong>?
+            Tem certeza que deseja excluir a streaming <strong>{selectedStreaming?.usuario}</strong>?
           </p>
           <p className="text-sm text-red-600">
             Esta ação não pode ser desfeita e todos os dados relacionados serão perdidos.
@@ -710,7 +711,7 @@ export const Streamings: React.FC = () => {
       <Modal
         isOpen={showViewersModal}
         onClose={() => setShowViewersModal(false)}
-        title={`Espectadores Conectados - ${selectedStreaming?.login}`}
+        title={`Espectadores Conectados - ${selectedStreaming?.usuario}`}
         size="lg"
       >
         <div className="space-y-4">
@@ -742,7 +743,7 @@ export const Streamings: React.FC = () => {
       <Modal
         isOpen={showPasswordModal}
         onClose={() => setShowPasswordModal(false)}
-        title={`Alterar Senha - ${selectedStreaming?.login}`}
+        title={`Alterar Senha - ${selectedStreaming?.usuario}`}
         size="sm"
       >
         <div className="space-y-4">

@@ -7,7 +7,7 @@ export interface Streaming {
   codigo_servidor: number;
   servidor_nome: string;
   servidor_ip: string;
-  login: string;
+  usuario: string;
   senha: string;
   identificacao: string;
   email: string;
@@ -29,7 +29,7 @@ export interface StreamingFormData {
   codigo_cliente?: number;
   plano_id?: number;
   codigo_servidor?: number;
-  login: string;
+  usuario: string;
   senha: string;
   identificacao: string;
   email: string;

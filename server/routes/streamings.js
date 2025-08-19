@@ -20,7 +20,7 @@ router.get('/', authenticateToken, async (req, res) => {
     const params = [];
 
     if (search) {
-      whereClause += ' AND (s.login LIKE ? OR s.email LIKE ? OR s.identificacao LIKE ?)';
+      whereClause += ' AND (s.usuario LIKE ? OR s.email LIKE ? OR s.identificacao LIKE ?)';
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
@@ -95,34 +95,34 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, requireLevel(['super_admin', 'admin']), async (req, res) => {
   try {
     const {
-      codigo_cliente, plano_id, codigo_servidor, login, senha, identificacao, email,
+      codigo_cliente, plano_id, codigo_servidor, usuario, senha, identificacao, email,
       espectadores, bitrate, espaco, aplicacao, idioma_painel, descricao
     } = req.body;
 
     const [existingStreaming] = await pool.execute(
-      'SELECT codigo FROM streamings WHERE login = ?',
-      [login]
+      'SELECT codigo FROM streamings WHERE usuario = ?',
+      [usuario]
     );
 
     if (existingStreaming.length > 0) {
-      return res.status(400).json({ message: 'Login já está em uso' });
+      return res.status(400).json({ message: 'Usuário já está em uso' });
     }
 
     const senhaHash = await bcrypt.hash(senha, 10);
     const senhaTransmissaoHash = await bcrypt.hash(senha, 10); // Mesma senha para transmissão por padrão
 
     // Gerar diretório FTP baseado no login
-    const ftpDir = `/home/streaming/${login}`;
+    const ftpDir = `/home/streaming/${usuario}`;
 
     const [result] = await pool.execute(
       `INSERT INTO streamings (
-        codigo_cliente, plano_id, codigo_servidor, login, senha, senha_transmissao,
+        codigo_cliente, plano_id, codigo_servidor, usuario, senha, senha_transmissao,
         identificacao, email, espectadores, bitrate, espaco, espaco_usado,
         ftp_dir, aplicacao, idioma_painel, descricao, data_cadastro,
         player_titulo, player_descricao, app_nome, app_email
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)`,
       [
-        codigo_cliente || null, plano_id || null, codigo_servidor, login, senhaHash, senhaTransmissaoHash,
+        codigo_cliente || null, plano_id || null, codigo_servidor, usuario, senhaHash, senhaTransmissaoHash,
         identificacao, email, espectadores, bitrate, espaco, 0,
         ftpDir, aplicacao || 'live', idioma_painel || 'pt-br', descricao || '',
         identificacao, descricao || '', identificacao, email
@@ -138,7 +138,7 @@ router.post('/', authenticateToken, requireLevel(['super_admin', 'admin']), asyn
 
       if (serverData[0]) {
         const wowzaResult = await wowzaConfigService.createWowzaConfig({
-          nome: login, // Usar o login da streaming como nome da aplicação
+          nome: usuario, // Usar o usuário da streaming como nome da aplicação
           serverIp: serverData[0].ip,
           bitrate: bitrate,
           espectadores: espectadores,
@@ -146,7 +146,7 @@ router.post('/', authenticateToken, requireLevel(['super_admin', 'admin']), asyn
         });
         
         if (wowzaResult.simulated) {
-          console.log(`⚠️ Configuração Wowza simulada para streaming ${login}: ${wowzaResult.message}`);
+          console.log(`⚠️ Configuração Wowza simulada para streaming ${usuario}: ${wowzaResult.message}`);
           await logAdminAction(req.admin.codigo, 'wowza_config_simulated', 'streamings', result.insertId, null, { 
             message: wowzaResult.message,
             serverIp: serverData[0].ip 
@@ -182,7 +182,7 @@ router.put('/:id', authenticateToken, requireLevel(['super_admin', 'admin']), as
     }
 
     const {
-      codigo_cliente, plano_id, codigo_servidor, login, senha, identificacao, email,
+      codigo_cliente, plano_id, codigo_servidor, usuario, senha, identificacao, email,
       espectadores, bitrate, espaco, descricao, aplicacao, idioma_painel
     } = req.body;
 
@@ -191,13 +191,13 @@ router.put('/:id', authenticateToken, requireLevel(['super_admin', 'admin']), as
 
     let updateQuery = `
       UPDATE streamings SET 
-        codigo_cliente = ?, plano_id = ?, codigo_servidor = ?, login = ?, 
+        codigo_cliente = ?, plano_id = ?, codigo_servidor = ?, usuario = ?, 
         identificacao = ?, email = ?, espectadores = ?, bitrate = ?, espaco = ?,
         descricao = ?, aplicacao = ?, idioma_painel = ?
     `;
 
     let params = [
-      clienteId, plano_id || null, codigo_servidor, login,
+      clienteId, plano_id || null, codigo_servidor, usuario,
       identificacao, email, espectadores, bitrate, espaco,
       descricao || '', aplicacao || 'live', idioma_painel || 'pt-br'
     ];
@@ -222,7 +222,7 @@ router.put('/:id', authenticateToken, requireLevel(['super_admin', 'admin']), as
 
       if (serverData[0]) {
         const wowzaResult = await wowzaConfigService.updateWowzaConfig(
-          streamingAnterior[0].login, // Login da streaming
+          streamingAnterior[0].usuario, // Usuário da streaming
           serverData[0].ip,
           {
             bitrate: bitrate,
@@ -231,7 +231,7 @@ router.put('/:id', authenticateToken, requireLevel(['super_admin', 'admin']), as
         );
         
         if (wowzaResult.simulated) {
-          console.log(`⚠️ Atualização Wowza simulada para streaming ${streamingAnterior[0].login}: ${wowzaResult.message}`);
+          console.log(`⚠️ Atualização Wowza simulada para streaming ${streamingAnterior[0].usuario}: ${wowzaResult.message}`);
         }
       }
     } catch (wowzaError) {
@@ -430,9 +430,10 @@ router.delete('/:id', authenticateToken, requireLevel(['super_admin', 'admin']),
 
       if (serverData[0]) {
         const wowzaResult = await wowzaConfigService.removeWowzaConfig(streaming[0].login, serverData[0].ip);
+        const wowzaResult = await wowzaConfigService.removeWowzaConfig(streaming[0].usuario, serverData[0].ip);
         
         if (wowzaResult.simulated) {
-          console.log(`⚠️ Remoção Wowza simulada para streaming ${streaming[0].login}: ${wowzaResult.message}`);
+          console.log(`⚠️ Remoção Wowza simulada para streaming ${streaming[0].usuario}: ${wowzaResult.message}`);
         }
       }
     } catch (wowzaError) {
